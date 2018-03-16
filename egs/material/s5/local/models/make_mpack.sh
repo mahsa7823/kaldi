@@ -46,10 +46,10 @@ fi
 mkdir -p $lpdir/conf
 
 echo "# Parsing feature config files..."
-python rewrite_config.py $feature_conf $lpdir/conf $lpdir || exit 1
+python local/models/rewrite_config.py $feature_conf $lpdir/conf $lpdir || exit 1
 
 echo "# Parsing ivector config files..."
-python rewrite_config.py $ivector_conf $lpdir/conf $lpdir || exit 1
+python local/models/rewrite_config.py $ivector_conf $lpdir/conf $lpdir || exit 1
 
 echo "# Copying nnet model $iter.model"
 cp $modeldir/$iter.mdl $lpdir || exit 1
