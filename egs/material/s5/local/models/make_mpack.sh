@@ -82,6 +82,10 @@ done
 #echo optlmwt=$lmwt >> $lpdir/local.conf
 #touch $lpdir/conf/decode.config
 
+mkdir $lpdir/scripts
+
+cp local/wer_output_filter $lpdir/scripts
+
 # zip the files to the destination $lpack
 
 fullpath=`readlink -f $lpack`
