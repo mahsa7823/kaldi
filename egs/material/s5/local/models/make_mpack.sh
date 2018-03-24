@@ -20,15 +20,17 @@ echo "$0 $@"  # Print the command line for logging
 . parse_options.sh || exit 1;
 
 graphdir=$1
-modeldir=$2
-lpack=$3
+phonedir=$2
+modeldir=$3
+lpack=$4
 
 # move all files to a temporary folder, the zip
 if [ -z $TMP ]; then
     TMP=/tmp
 fi
 
-lpdir=$TMP/kaldi-lp-`uuidgen`
+uuid=`cat /proc/sys/kernel/random/uuid`
+lpdir=$TMP/kaldi-lp-$uuid
 
 if [[ ! -d $lpdir ]]; then
     mkdir -p $lpdir
@@ -60,8 +62,7 @@ mkdir $lpdir/graph
 
 # Check for files in the graph directory to be sure
 graphfiles=(HCLG.fst words.txt phones.txt disambig_tid.int)
-phonefiles=(word_boundary.int word_boundary.txt align_lexicon.txt \
-            align_lexicon.int disambig.int disambig.txt silence.csl)
+phonefiles=(word_boundary.int)
 
 for file in ${graphfiles[@]} ; do
     if [ ! -f $graphdir/$file ]; then
@@ -70,6 +71,15 @@ for file in ${graphfiles[@]} ; do
     fi
     echo "cp $graphdir/$file $lpdir/graph"
     cp $graphdir/$file $lpdir/graph
+done
+
+for file in ${phonefiles[@]} ; do
+    if [ ! -f $phonedir/$file ]; then
+        echo "# Missing graph file $phonedir/$file"
+        exit 1
+    fi
+    echo "cp $phonedir/$file $lpdir/graph"
+    cp $phonedir/$file $lpdir/graph
 done
 
 # if a dev set is decoded, we could extract best LMWT
