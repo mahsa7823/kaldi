@@ -26,6 +26,10 @@ wav=$2
 segments=$3
 outdir=$4
 
+if [[ ! -d  $outdir ]]; then
+  mkdir -p $outdir || (echo "Cannot create output dir $outdir" && exit 1)
+fi
+
 if [ -z $tmpdir ]; then
   tmpdir=/tmp
 fi
@@ -40,6 +44,10 @@ sed "s|__modeldir__|${modeldir}|" $modeldir/conf/mfcc_hires.conf | \
     sed "s|__confdir__|${modeldir}/conf|" > $dir/mfcc.conf
 sed "s|__modeldir__|${modeldir}|" $modeldir/conf/ivector_extractor.conf | \
     sed "s|__confdir__|${modeldir}/conf|" > $dir/ivector_extractor.conf
+
+# for path to sph2pipe
+sed "s|__KALDI_ROOT__|${KALDI_ROOT}|" $wav > $dir/wav.scp
+wav=$dir/wav.scp
 
 awk '{ print $1, $2 }'  < $segments > $dir/utt2spk
 utt2spk_to_spk2utt.pl $dir/utt2spk > $dir/spk2utt
@@ -85,7 +93,7 @@ nnet3-latgen-faster-parallel --num-threads=4 \
 # convert to text lattice
 mkdir $dir/tmp
 lattice-align-words $wboundary $modeldir/final.mdl \
-		"ark:zcat outdir/lat.gz |" ark:-  | \
+		"ark:zcat $dir/lat.gz |" ark:-  | \
 	lattice-determinize ark:- ark,t:- |
 	int2sym.pl -f 3 $symtab| 
 	convert_slf.pl  - $dir/tmp
@@ -130,11 +138,12 @@ done
 
 #move to output directory
 for f in transcript.txt transcript.ctm lat.gz lat.txt.gz ; do
-   cp $dir/f $outdir
+   cp $dir/$f $outdir
 done
 
 #cleanup
 rm -rf $dir
 
 exit 0
+
 
