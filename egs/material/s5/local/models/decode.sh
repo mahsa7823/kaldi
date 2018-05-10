@@ -4,8 +4,9 @@
 decode_mbr=false
 beam=6
 word_ins_penalty=1.0
-min_lmwt=7
-max_lmwt=17
+#min_lmwt=7
+#max_lmwt=17
+lmwt=11
 filter=wer_output_filter
 tmpdir=
 # end configuration section.
@@ -109,7 +110,9 @@ fi
 
 # output 1-best transcript in text and ctm format
 mkdir -p $dir/scoring_kaldi/penalty_$wip/log
-for LMWT in `seq $min_lmwt $max_lmwt` ; do
+#for LMWT in `seq $min_lmwt $max_lmwt` ; do
+# this loop is typically done for eval, but blows up the processing time
+LMWT=$lmwt
     #    $cmd LMWT=$min_lmwt:$max_lmwt $dir/scoring_kaldi/penalty_$wip/log/best_path.LMWT.log \
     if $decode_mbr ; then
         lattice-scale --inv-acoustic-scale=$LMWT "ark:gunzip -c $dir/lat.gz|" ark:- | \
@@ -134,7 +137,7 @@ for LMWT in `seq $min_lmwt $max_lmwt` ; do
         int2sym.pl -f 5 $symtab > $dir/transcript.ctm
                       
     
-done
+#done
 
 #move to output directory
 for f in transcript.txt transcript.ctm lat.gz lat.txt.gz ; do
