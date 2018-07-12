@@ -4,21 +4,31 @@
 decode_mbr=false
 beam=6
 word_ins_penalty=1.0
-min_lmwt=7
-max_lmwt=17
+#min_lmwt=7
+#max_lmwt=17
+lmwt=11
 filter=wer_output_filter
 tmpdir=
+online_ivec=false
 # end configuration section.
 
 echo "$0 $@"  # Print the command line for logging
 
 if [ -z $KALDI_ROOT ]; then
-	echo "Please define KALDI_ROOT"
-	exit 1
+    echo "Please define KALDI_ROOT"
+    exit 1
 fi
 
 . $KALDI_ROOT/tools/config/common_path.sh
+
+export PATH=$PATH:$KALDI_ROOT/egs/material/s5/utils
+
 . parse_options.sh || exit 1;
+
+if [[ $# != 4 ]]; then
+    echo "usage: decode.sh <modeldir> <wav.scp> <segments> <outdir>"
+    exit 1
+fi
 
 
 modeldir=$1
@@ -34,12 +44,26 @@ if [ -z $tmpdir ]; then
   tmpdir=/tmp
 fi
 
-dir=$tmpdir/kaldi-decode-`uuidgen`
+uuidgen=`which uuidgen`
+if [ -z $uuidgen ]; then
+    uuidgen="cat /proc/sys/kernel/random/uuid"
+fi
+
+dir=$tmpdir/kaldi-decode-`$uuidgen`
 
 if [[ ! -d  $dir ]]; then
   mkdir -p $dir
 fi
 
+#if [[ $modeldir =~ "zip$" ]]; then
+if [[ ! -d "$modeldir" ]]; then
+    echo "Exctracting zip file to $dir/model"
+    mdkir $dir/model
+    unzip $modeldir -d $dir/model
+    modeldir=$dir/model
+fi
+
+confdir=$modeldir/conf
 sed "s|__modeldir__|${modeldir}|" $modeldir/conf/mfcc_hires.conf | \
     sed "s|__confdir__|${modeldir}/conf|" > $dir/mfcc.conf
 sed "s|__modeldir__|${modeldir}|" $modeldir/conf/ivector_extractor.conf | \
@@ -69,11 +93,27 @@ compute-cmvn-stats --spk2utt=ark:$dir/spk2utt scp:$dir/feats.scp \
 
 
 # extract ivector
-ivector-extract-online2 --config=$dir/ivector_extractor.conf \
+if $online_ivec; then
+    ivector-extract-online2 --config=$dir/ivector_extractor.conf \
                         ark:$dir/spk2utt \
                         scp:$dir/feats.scp ark:- | \
     copy-feats --compress=true ark:- \
                ark,scp:$dir/ivector_online.ark,$dir/ivector_online.scp
+
+else
+
+    gmm-global-get-post --n=5 --min-post=0.025 $modeldir/final.dubm \
+                        "ark,s,cs:apply-cmvn-online --spk2utt=ark:$dir/spk2utt --config=$confdir/online_cmvn.conf $modeldir/global_cmvn.stats scp:$dir/feats.scp ark:- | splice-feats --left-context=3 --right-context=3 ark:- ark:- | transform-feats $modeldir/final.mat ark:- ark:- |" ark:- | \
+        ivector-extract --num-threads=1 --acoustic-weight=0.1 --compute-objf-change=true --max-count=75 \
+                        $modeldir/final.ie "ark,s,cs:splice-feats --left-context=3 --right-context=3 scp:$dir/feats.scp ark:- | transform-feats $modeldir/final.mat ark:- ark:- |" ark,s,cs:- \
+                        ark,scp:$dir/ivectors_utt.ark,$dir/ivectors_utt.scp
+
+    append-vector-to-feats scp:$dir/feats.scp \
+                           ark:$dir/ivectors_utt.ark ark:- | \
+        select-feats 40-139 ark:- ark:- | subsample-feats --n=10 ark:- ark:- | \
+        copy-feats --compress=true ark:- ark,scp:$dir/ivector_online.ark,$dir/ivector_online.scp
+
+fi
 
 # decode to lattice
 nnet3-latgen-faster-parallel --num-threads=4 \
@@ -90,6 +130,20 @@ nnet3-latgen-faster-parallel --num-threads=4 \
                              "ark,s,cs:apply-cmvn --norm-means=false --norm-vars=false --utt2spk=ark:$dir/utt2spk scp:$dir/cmvn.scp scp:$dir/feats.scp ark:- |" \
                              "ark:|lattice-scale --acoustic-scale=10.0 ark:- ark:- | gzip -c > $dir/lat.gz"
 
+if $rnnlm; then
+    mv $dir/lat.gz $dir/lat.old.gz 
+    lattice-lmrescore-kaldi-rnnlm-pruned --lm-scale=0.5 \
+                                         --eos-symbol=405418 --bos-symbol=405417 \
+                                         --brk-symbol=405419 --lattice-compose-beam=4 \
+                                         --acoustic-scale=0.1 --max-ngram-order=4 \
+                                         --max-arcs=20000 /export/b05/hxu/material/egs/material/s5_2/data/lang_combined_2_chain/G.fst \
+                                         'rnnlm-get-word-embedding /export/b05/hxu/material/egs/material/s5_2/exp/rnnlm_lstm_1a/word_feats.txt /export/b05/hxu/material/egs/material/s5_2/exp/rnnlm_lstm_1a/feat_embedding.final.mat -|' \
+                                         /export/b05/hxu/material/egs/material/s5_2/exp/rnnlm_lstm_1a/final.raw \
+                                         "ark:gunzip -c $dir/lat.old.gz|" \
+                                         "ark,t:|gzip -c> $dir/lat.gz"
+
+
+fi
 # convert to text lattice
 mkdir $dir/tmp
 lattice-align-words $wboundary $modeldir/final.mdl \
@@ -109,7 +163,8 @@ fi
 
 # output 1-best transcript in text and ctm format
 mkdir -p $dir/scoring_kaldi/penalty_$wip/log
-for LMWT in `seq $min_lmwt $max_lmwt` ; do
+        #for LMWT in `seq $min_lmwt $max_lmwt` ; do
+LMWT=$lmwt
     #    $cmd LMWT=$min_lmwt:$max_lmwt $dir/scoring_kaldi/penalty_$wip/log/best_path.LMWT.log \
     if $decode_mbr ; then
         lattice-scale --inv-acoustic-scale=$LMWT "ark:gunzip -c $dir/lat.gz|" ark:- | \
@@ -134,15 +189,16 @@ for LMWT in `seq $min_lmwt $max_lmwt` ; do
         int2sym.pl -f 5 $symtab > $dir/transcript.ctm
                       
     
-done
+#done
 
 #move to output directory
 for f in transcript.txt transcript.ctm lat.gz lat.txt.gz ; do
    cp $dir/$f $outdir
 done
 
+
 #cleanup
-rm -rf $dir
+#rm -rf $dir
 
 exit 0
 

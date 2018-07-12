@@ -5,9 +5,12 @@
 import sys
 import os
 from shutil import copyfile
+import argparse
+
+
 
 # recursively rewrite a config file an its dependencies
-def rewrite(file, confdir, fdir) :
+def rewrite(file, confdir, fdir, root=None) :
     name = os.path.basename(file)    
     out = open(confdir+ "/" + name, 'w')
     f=open(file, 'r')
@@ -25,11 +28,14 @@ def rewrite(file, confdir, fdir) :
         (flag, val)=x
 
                     
-        if (os.path.isfile(val)) :
+        if (os.path.isfile(val) or (root is not None and os.path.isfile(root + "/" + val))) :
+            if root is not None and not val.startswith("/") :
+                val = root + "/" + val
+                        
             name = os.path.basename(val)
             if ( val.endswith(".conf")) :
                 out.write("%s=__confdir__/%s\n" % (flag, name))
-                rewrite(val, confdir, fdir)
+                rewrite(val, confdir, fdir, root=root)
             else :
                 if (not os.path.isfile(fdir + "/" + name)) :
                     copyfile(val, fdir + "/" + name)
@@ -40,17 +46,18 @@ def rewrite(file, confdir, fdir) :
     f.close()
     out.close()
 
-if (len(sys.argv) < 3) :
-    sys.err.write("Usage: rewrite_config.py config-file output-dir\n")
-    sys.exit(1)
+parser = argparse.ArgumentParser()
+parser.add_argument("config", help="echo the string you use here")
+parser.add_argument("confdir", help="echo the string you use here")
+parser.add_argument("filedir", help="echo the string you use here")
+parser.add_argument("-r", "--root", help="echo the string you use here", default=None)
 
+args=parser.parse_args()
     
-(config, confdir, filedir) = sys.argv[1:]
+name = os.path.basename(args.config)
 
-name = os.path.basename(config)
+print("# rewriting %s\n" % (args.config))
 
-print("# rewriting %s\n" % (config))
-
-rewrite(config, confdir, filedir)
+rewrite(args.config, args.confdir, args.filedir, root=args.root)
 
 
