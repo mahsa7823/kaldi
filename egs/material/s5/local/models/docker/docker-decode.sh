@@ -15,17 +15,33 @@
 
 models=$1
 data=$2
-wavscp=$3
-segments=$4
-output=$5
+output=$3
+wavscp=$4
+
+segments=$5
 
 # path to prepare_wavscp
 bindir="$( cd "$( dirname "$0" )" && pwd )"
 
 mkdir -p $data/audio
 
-$bindir/prepare_wavscp.pl $wavscp $data/audio > $data/wav.scp
-cp $segments $data/segments
+if [ -f $wavscp ]; then
+    # external wavscp and segments
+    if [ ! -f $data/wav.scp.orig ]; then
+        cp $wavscp $data/wav.scp.orig
+    fi
+    $bindir/prepare_wavscp.pl $data/wav.scp.orig $data/audio > $data/wav.scp
+else
+    echo "Cannot read wav.scp : $wavscp"
+fi
+
+if [ -f $segments ]; then
+    if [ `realpath $segments` != `realpath $data/segments` ]; then
+      cp $segments $data/segments
+    fi
+else
+    echo "Warning:  No segments file provided, creating 30s segments."
+fi
 
 docker run -v $models:/model -v $data:/data -v $output:/output \
 	kaldi-decoder:v1 \

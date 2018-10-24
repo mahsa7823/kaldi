@@ -70,7 +70,6 @@ if [ -z $segments ]; then
   segments=$outdir/segments
 fi
 
-
 #if [[ $modeldir =~ "zip$" ]]; then
 if [[ ! -d "$modeldir" ]]; then
     echo "Exctracting zip file to $dir/model"
