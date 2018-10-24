@@ -14,15 +14,17 @@ prefix=
 feature_conf=conf/mfcc_hires.conf
 ivector_conf=exp/nnet3/ivectors_train_sp_hires/conf/ivector_extractor.conf
 iter=final
+root=.
 
 echo "$0 $@"  # Print the command line for logging
 [ -f ./path.sh ] && . ./path.sh; # source the path.
 . parse_options.sh || exit 1;
 
 graphdir=$1
-phonedir=$2
-modeldir=$3
-lpack=$4
+modeldir=$2
+lpack=$3
+
+bindir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # move all files to a temporary folder, the zip
 if [ -z $TMP ]; then
@@ -48,10 +50,10 @@ fi
 mkdir -p $lpdir/conf
 
 echo "# Parsing feature config files..."
-python local/models/rewrite_config.py $feature_conf $lpdir/conf $lpdir || exit 1
+python local/models/rewrite_config.py --root $root $root/$feature_conf $lpdir/conf $lpdir || exit 1
 
 echo "# Parsing ivector config files..."
-python local/models/rewrite_config.py $ivector_conf $lpdir/conf $lpdir || exit 1
+python local/models/rewrite_config.py --root $root $root/$ivector_conf $lpdir/conf $lpdir || exit 1
 
 echo "# Copying nnet model $iter.model"
 cp $modeldir/$iter.mdl $lpdir || exit 1
@@ -61,8 +63,7 @@ echo mkdir $lpdir/graph
 mkdir $lpdir/graph
 
 # Check for files in the graph directory to be sure
-graphfiles=(HCLG.fst words.txt phones.txt disambig_tid.int)
-phonefiles=(word_boundary.int)
+graphfiles=(HCLG.fst words.txt phones.txt disambig_tid.int phones/word_boundary.int)
 
 for file in ${graphfiles[@]} ; do
     if [ ! -f $graphdir/$file ]; then
@@ -73,14 +74,6 @@ for file in ${graphfiles[@]} ; do
     cp $graphdir/$file $lpdir/graph
 done
 
-for file in ${phonefiles[@]} ; do
-    if [ ! -f $phonedir/$file ]; then
-        echo "# Missing graph file $phonedir/$file"
-        exit 1
-    fi
-    echo "cp $phonedir/$file $lpdir/graph"
-    cp $phonedir/$file $lpdir/graph
-done
 
 # if a dev set is decoded, we could extract best LMWT
 #lexicon=`grep ^lexicon_file local.conf| sed 's/lexicon_file=//'`
@@ -94,7 +87,7 @@ done
 
 mkdir $lpdir/scripts
 
-cp local/wer_output_filter $lpdir/scripts
+cp $root/local/wer_output_filter $lpdir/scripts
 
 # zip the files to the destination $lpack
 
